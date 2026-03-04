@@ -26,6 +26,9 @@
     <Text Include="instructions.txt">
       <Filter>Файлы ресурсов</Filter>
     </Text>
+    <Text Include="Отчет_IC_test_AO_test.txt">
+      <Filter>Файлы ресурсов</Filter>
+    </Text>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="FileSorter.h">

@@ -134,6 +134,7 @@
   </ItemGroup>
   <ItemGroup>
     <Text Include="instructions.txt" />
+    <Text Include="Отчет_IC_test_AO_test.txt" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="FileSorter.h" />

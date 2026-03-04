@@ -16,17 +16,20 @@ bool fileExists(const std::string& f) {
 
 std::string findSmartInputFile() {
     WIN32_FIND_DATAA fd;
-    HANDLE h = FindFirstFileA("Отчет_*.txt", &fd);
-    if (h != INVALID_HANDLE_VALUE) { std::string n = fd.cFileName; FindClose(h); return n; }
-    h = FindFirstFileA("*.txt", &fd);
+    HANDLE h = FindFirstFileA("*.txt", &fd);
+    std::string fallback = "";
     if (h != INVALID_HANDLE_VALUE) {
         do {
             std::string n = fd.cFileName;
-            if (n.find("instr") == std::string::npos) { FindClose(h); return n; }
+            if (n.find("instr") != std::string::npos) continue;
+            if (n.find("тчет") != std::string::npos || n.find("Тчет") != std::string::npos) {
+                FindClose(h); return n;
+            }
+            if (fallback.empty()) fallback = n;
         } while (FindNextFileA(h, &fd));
         FindClose(h);
     }
-    return "";
+    return fallback;
 }
 
 std::string getIndexedName(const std::string& base) {
@@ -43,13 +46,13 @@ std::string getIndexedName(const std::string& base) {
 std::string generateOutputFilename(const std::string& in, SortCriteria c, bool a) {
     std::string s;
     switch (c) {
-    case BY_NAME: s = "_By_Name"; break;
-    case BY_ADDR: s = "_By_Addr"; break;
-    case BY_DIR:  s = "_By_Dir";  break;
-    case BY_TYPE: s = "_By_Type"; break;
-    case BY_DATE: s = "_By_Date"; break;
+    case BY_NAME: s = "_Имя"; break;
+    case BY_ADDR: s = "_Адрес"; break;
+    case BY_DIR:  s = "_Дир";  break;
+    case BY_TYPE: s = "_Вид"; break;
+    case BY_DATE: s = "_Дата"; break;
     }
-    s += (a ? "_Asc" : "_Desc");
+    s += (a ? "_Возр" : "_Убыв");
     size_t d = in.find_last_of('.');
     return (d == std::string::npos ? in + s : in.substr(0, d) + s);
 }
@@ -123,12 +126,17 @@ void performGroupingSort(const std::string& in, const std::string& out, SortCrit
         res.close(); f.close();
         last = best; first = false; std::cout << ".";
     }
-    std::cout << "\n Файл сформирован: " << out << "\n";
+    std::cout << "\nЗапись успешно завершена.\n";
 }
 
 void printInstructions(const std::string& p) {
     std::ifstream f(p);
-    if (!f) { std::cout << "\n! Файл инструкции (instructions.txt) не найден.\n Положите файл инструкции в папку с текущей программой"; return; }
+    if (!f) 
+    { 
+        std::cout << "\n ! Инструкция (instructions.txt) не найдена.\n";
+        std::cout << " Пожалуйста, положите текстовый файл инструкции в папку с приложением\n";
+        return;
+    }
     std::string l;
     std::cout << "\n------------------------------------------------------------\n";
     while (std::getline(f, l)) std::cout << " " << l << "\n";
