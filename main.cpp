@@ -5,25 +5,46 @@
 
 using namespace std;
 
-enum Flow { SUCCESS, BACK };
+// Состояния для выхода из меню
+enum FlowState { SUCCESS, BACK };
 
-Flow safeInput(string& b, string p) {
-    cout << p << b;
+FlowState safeInput(string& buffer, string prompt) {
+    cout << prompt << buffer;
     while (true) {
-        int c = _getch();
-        if (c == 0 || c == 224) { if (_kbhit()) { _getch(); continue; } }
-        if (c == 27) return BACK;
-        if (c == 13) { if (b.empty()) continue; cout << endl; return SUCCESS; }
-        if (c == 8) { if (!b.empty()) { b.pop_back(); cout << "\b \b"; } }
-        else if (c >= 32 && c <= 255) {
-            if (string("<>:\"/\\|?*").find((char)c) != string::npos) continue;
-            b += (char)c; cout << (char)c;
+        int keycode = _getch();
+
+        // Игнорирование служебных клавиш (стрелки, F1-F12)
+        if (keycode == 0 || keycode == 224) {
+            if (_kbhit()) { _getch(); continue; }
+        }
+
+        if (keycode == 27) return BACK; // Нажат ESC
+
+        if (keycode == 13) { // Нажат Enter
+            if (buffer.empty()) continue;
+            cout << endl;
+            return SUCCESS;
+        }
+
+        if (keycode == 8) { // Нажат Backspace
+            if (!buffer.empty()) {
+                buffer.pop_back();
+                cout << "\b \b";
+            }
+        }
+        else if (keycode >= 32 && keycode <= 255) {
+            // Защита от системных символов Windows
+            if (string("<>:\"/\\|?*").find((char)keycode) != string::npos) continue;
+            buffer += (char)keycode;
+            cout << (char)keycode;
         }
     }
 }
 
 int main() {
-    SetConsoleCP(1251); SetConsoleOutputCP(1251);
+    SetConsoleCP(1251);
+    SetConsoleOutputCP(1251);
+
     while (true) {
         system("cls");
         cout << "============================================================\n";
@@ -40,60 +61,116 @@ int main() {
         cout << " 1. Начать выполнение\n 2. Инструкция\n ESC. Выход\n";
         cout << "------------------------------------------------------------\n";
 
-        int m = _getch();
-        if (m == 27) break;
-        if (m == '2') { system("cls"); printInstructions("instructions.txt"); cout << "\n Нажмите любую клавишу..."; _getch(); continue; }
-        if (m == '1') {
-            int step = 1;
-            string inP = "", outP = "";
-            SortCriteria cr = BY_NAME;
-            bool asc = true;
+        int menuKey = _getch();
+        if (menuKey == 27) break;
+        if (menuKey == '2') {
+            system("cls");
+            printInstructions("instructions.txt");
+            cout << "\n Нажмите любую клавишу..."; _getch();
+            continue;
+        }
 
-            while (step > 0 && step <= 4) {
+        if (menuKey == '1') {
+            int currentStep = 1;
+            string inputPath = "", outputPath = "";
+            SortCriteria sortCriteria = BY_NAME;
+            bool isAscending = true;
+
+            // Машина состояний
+            while (currentStep > 0 && currentStep <= 4) {
                 system("cls");
-                if (step == 1) cout << " [ ESC: Назад в главное меню ]\n";
-                else cout << " [ ESC: Назад на один шаг ]\n";
+                if (currentStep == 1) cout << " [ ESC: Назад в главное меню ]\n";
+                else cout << "[ ESC: Назад на один шаг ]\n";
                 cout << "------------------------------------------------------------\n";
 
-                switch (step) {
-                case 1: {
-                    string d = findSmartInputFile();
-                    if (!d.empty()) {
-                        cout << " Обнаружен файл: " << d << "\n Использовать его? (Y - да, любой другой ввод - нет): ";
-                        string a = "Y"; if (safeInput(a, "") == BACK) { step = 0; break; }
-                        if (a == "Y" || a == "y" || a == "Да" || a == "да") { inP = d; step = 2; break; }
+                switch (currentStep) {
+                case 1: { // ВЫБОР ФАЙЛА
+                    string autoFoundFile = findSmartInputFile();
+                    if (!autoFoundFile.empty()) {
+                        cout << " Обнаружен файл: " << autoFoundFile << "\n Использовать его? (Y - да, любой другой ввод - нет): ";
+                        string answer = "Y";
+                        if (safeInput(answer, "") == BACK) { currentStep = 0; break; }
+
+                        if (answer == "Y" || answer == "y" || answer == "Да" || answer == "да") {
+                            inputPath = autoFoundFile;
+                            currentStep = 2;
+                            break;
+                        }
                     }
                     cout << " ! Вводите только название (без .txt).\n";
-                    string man = "";
-                    if (safeInput(man, " Имя входного файла: ") == BACK) { step = 0; break; }
-                    inP = man + ".txt";
-                    if (!fileExists(inP)) { cout << "\n Ошибка: файл не найден. [Enter]"; while (_getch() != 13); break; }
-                    step = 2; break;
+                    string manualInput = "";
+                    if (safeInput(manualInput, " Имя входного файла: ") == BACK) { currentStep = 0; break; }
+
+                    inputPath = manualInput + ".txt";
+                    if (!fileExists(inputPath)) {
+                        cout << "\n Ошибка: файл не найден. [Enter]";
+                        while (_getch() != 13);
+                        break;
+                    }
+                    currentStep = 2;
+                    break;
                 }
-                case 2: {
-                    cout << " Файл: " << inP << "\n Поле группировки:\n";
-                    cout << " 1. Имя\n 2. Адрес\n 3. Руководитель\n 4. Вид корреспонденции\n 5. Дата\n";
-                    int s = _getch();
-                    if (s == 27) { step = 1; break; }
-                    if (s < '1' || s > '5') break;
-                    cr = (SortCriteria)(s - '1'); step = 3; break;
+                case 2: { // ВЫБОР КРИТЕРИЯ
+                    cout << " Файл: " << inputPath << "\n Поле группировки:\n";
+                    cout << " 1. Имя\n 2. Адрес\n 3. Руководитель\n 4. Вид корр.\n 5. Дата\n";
+
+                    int key = _getch();
+                    if (key == 27) { currentStep = 1; break; }
+                    if (key < '1' || key > '5') break;
+
+                    sortCriteria = (SortCriteria)(key - '1');
+                    currentStep = 3;
+                    break;
                 }
-                case 3: {
+                case 3: { // ВЫБОР НАПРАВЛЕНИЯ
                     cout << " Порядок:\n 1. А-Я (0-9)\n 2. Я-А (9-0)\n";
-                    int d = _getch();
-                    if (d == 27) { step = 2; break; }
-                    if (d != '1' && d != '2') break;
-                    asc = (d == '1'); step = 4; break;
+
+                    int key = _getch();
+                    if (key == 27) { currentStep = 2; break; }
+                    if (key != '1' && key != '2') break;
+
+                    isAscending = (key == '1');
+                    currentStep = 4;
+                    break;
                 }
-                case 4: {
-                    string oB = generateOutputFilename(inP, cr, asc);
-                    string oF = getIndexedName(oB);
+                case 4: { // СОХРАНЕНИЕ
+                    // Генерируем базовое имя (например Отчет_Имя_Возр)
+                    string autoBaseName = generateOutputFilename(inputPath, sortCriteria, isAscending);
+                    string suggestedName = autoBaseName;
+
+                    // ПРОВЕРКА ДУБЛИКАТОВ И УВЕДОМЛЕНИЕ
+                    if (fileExists(autoBaseName + ".txt")) {
+                        suggestedName = getIndexedName(autoBaseName); // Получит Отчет_Имя_Возр(1)
+                        cout << " ! Исходный файл " << autoBaseName << ".txt уже существует.\n";
+                        cout << " По умолчанию будет предложено безопасное имя с индексом.\n\n";
+                    }
+
                     cout << " ! Вводите только название (без .txt).\n";
-                    size_t dot = oF.find_last_of('.');
-                    string mO = (dot == string::npos) ? oF : oF.substr(0, dot);
-                    if (safeInput(mO, " Имя выходного файла: ") == BACK) { step = 3; break; }
-                    performGroupingSort(inP, mO + ".txt", cr, asc);
-                    cout << "\n Нажмите любую клавишу..."; _getch(); step = 5; break;
+
+                    // Предлагаем пользователю имя (с индексом или без)
+                    string manualOutput = suggestedName;
+                    if (safeInput(manualOutput, " Имя выходного файла: ") == BACK) { currentStep = 3; break; }
+
+                    string finalPath = manualOutput + ".txt";
+
+                    // ЛОГИКА ПЕРЕЗАПИСИ (Если пользователь стер индекс или ввел другое существующее имя)
+                    if (fileExists(finalPath)) {
+                        cout << "\n ВНИМАНИЕ Файл " << finalPath << " уже существует!\n";
+                        cout << " Перезаписать его? (Y - да, любой другой ввод - нет): ";
+                        string overwriteAns = "Y";
+                        if (safeInput(overwriteAns, "") == BACK) { currentStep = 3; break; }
+
+                        // Если пользователь передумал перезаписывать - возвращаем его на стадию 4
+                        if (!(overwriteAns == "Y" || overwriteAns == "y" || overwriteAns == "Да" || overwriteAns == "да")) {
+                            break;
+                        }
+                    }
+
+                    performGroupingSort(inputPath, finalPath, sortCriteria, isAscending);
+                    cout << "\n Нажмите любую клавишу...";
+                    _getch();
+                    currentStep = 5;
+                    break;
                 }
                 }
             }
