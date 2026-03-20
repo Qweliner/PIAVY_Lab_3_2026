@@ -5,7 +5,7 @@
 
 using namespace std;
 
-// Перечисление состояний для безопасного ввода
+// Енум помогает избавиться от магических чисел (0 и 1) в return. Код читается как английский текст.
 enum FlowState { SUCCESS, BACK };
 
 FlowState safeInput(string& buffer, string prompt) {
@@ -13,7 +13,7 @@ FlowState safeInput(string& buffer, string prompt) {
     while (true) {
         int keycode = _getch();
 
-        // Отсекаем стрелки (начинаются с 0 или 224). _kbhit() проверяет, есть ли хвост у стрелки.
+        // Скипаем стрелки. _kbhit проверяет, есть ли второй код в буфере клавиатуры (стрелки отправляют 2 байта).
         if (keycode == 0 || keycode == 224) {
             if (_kbhit()) { _getch(); continue; }
         }
@@ -21,7 +21,7 @@ FlowState safeInput(string& buffer, string prompt) {
         if (keycode == 27) return BACK; // Нажат ESC
 
         if (keycode == 13) {
-            if (buffer.empty()) continue;
+            if (buffer.empty()) continue; // Блокируем пустой Enter
             cout << endl;
             return SUCCESS;
         }
@@ -33,11 +33,21 @@ FlowState safeInput(string& buffer, string prompt) {
             }
         }
         else if (keycode >= 32 && keycode <= 255) {
+            // Рубим попытки ввести системные символы, которые сломают создание файла
             if (string("<>:\"/\\|?*").find((char)keycode) != string::npos) continue;
             buffer += (char)keycode;
             cout << (char)keycode;
         }
     }
+}
+
+// Вспомогательная функция для проверки, состоит ли строка только из цифр
+bool isNumber(const string& s) {
+    if (s.empty()) return false;
+    for (char const& c : s) {
+        if (std::isdigit(c) == 0) return false;
+    }
+    return true;
 }
 
 int main() {
@@ -48,6 +58,14 @@ int main() {
         system("cls");
         cout << "============================================================\n";
         cout << "              СИСТЕМА СОРТИРОВКИ ОТЧЕТНОСТИ                 \n";
+        cout << "============================================================\n";
+        cout << " Пример формата:\n";
+        cout << " Название организации: ООО Вектор\n";
+        cout << " Адрес: г. Москва, ул. Тверская, д. 10\n";
+        cout << " Фамилия руководителя: Иванов И.И.\n";
+        cout << " Корреспонденция:\n";
+        cout << " \t- Вид: Письмо, Дата: 15.01.2024\n";
+        cout << " --------------------\n";
         cout << "============================================================\n";
         cout << " 1. Начать выполнение сортировки\n";
         cout << " 2. Инструкция пользователя\n";
@@ -69,7 +87,7 @@ int main() {
             SortCriteria sortCriteria = BY_NAME;
             bool isAscending = true;
 
-            // Конечный автомат для удобной отмены действий по ESC
+            // Автомат состояний (стейт-машина) - позволяет делать шаг назад (currentStep--) без рекурсии
             while (currentStep > 0 && currentStep <= 4) {
                 system("cls");
                 if (currentStep == 1) cout << " [ ESC: Возврат в главное меню ]\n";
@@ -78,7 +96,6 @@ int main() {
 
                 switch (currentStep) {
                 case 1: {
-                    // ПРАВКА ПРЕПОДА №7: Меню выбора файлов
                     vector<string> files = getAvailableFiles();
                     if (!files.empty()) {
                         cout << " Найденные текстовые файлы в папке:\n";
@@ -86,19 +103,39 @@ int main() {
                             cout << " " << i + 1 << ". " << files[i] << "\n";
                         }
                         cout << " 0. Ввести имя файла вручную\n\n";
-                        cout << " Выберите пункт: ";
 
-                        int fileChoice = _getch();
-                        if (fileChoice == 27) { currentStep = 0; break; }
+                        string choiceStr = "";
+                        // Теперь юзер может ввести число любой длины (например "150")
+                        if (safeInput(choiceStr, " Выберите пункт: ") == BACK) { currentStep = 0; break; }
 
-                        int idx = fileChoice - '0';
-                        if (idx > 0 && idx <= files.size()) {
-                            inputPath = files[idx - 1];
-                            currentStep = 2;
-                            break;
+                        if (isNumber(choiceStr)) {
+                            int idx = std::stoi(choiceStr);
+
+                            if (idx > 0 && idx <= files.size()) {
+                                inputPath = files[idx - 1];
+
+                                // Проверяем, не удалили ли файл из папки, пока пользователь думал
+                                if (!fileExists(inputPath)) {
+                                    cout << "\n Ошибка: выбранный файл больше не существует. [Enter]";
+                                    while (_getch() != 13);
+                                    break; // Сброс case 1
+                                }
+                                currentStep = 2;
+                                break;
+                            }
+                            else if (idx == 0) {
+                                // Прыгаем вниз на ручной ввод
+                            }
+                            else {
+                                cout << "\n Ошибка: пункта с таким номером нет. [Enter]";
+                                while (_getch() != 13);
+                                break;
+                            }
                         }
-                        else if (idx != 0) {
-                            break; // Нажата левая кнопка, обновляем экран
+                        else {
+                            cout << "\n Ошибка: нужно ввести число. [Enter]";
+                            while (_getch() != 13);
+                            break;
                         }
                     }
 
@@ -129,8 +166,8 @@ int main() {
                 }
                 case 3: {
                     cout << " Направление сортировки:\n";
-                    cout << " 1. По возрастанию (А -> Я, Старые -> Новые)\n";
-                    cout << " 2. По убыванию (Я -> А, Новые -> Старые)\n";
+                    cout << " 1. По возрастанию\n";
+                    cout << " 2. По убыванию\n";
 
                     int key = _getch();
                     if (key == 27) { currentStep = 2; break; }

@@ -2,21 +2,19 @@
 #include <iostream>
 #include <sstream>
 #include <algorithm>
-#include <windows.h> // Оставлен только для поиска файлов в папке (требование отсутствия путей)
+#include <windows.h> 
 
-// Проверка на запрещенные символы ОС (защита от краша)
 bool isValidFilename(const std::string& filename) {
     if (filename.empty()) return false;
     return filename.find_first_of("<>:\"/\\|?*") == std::string::npos;
 }
 
-// Стандартная C++ проверка существования файла (открываем и смотрим, открылся ли)
+// Надежная проверка: если поток открылся, значит файл 100% есть и доступен
 bool fileExists(const std::string& filename) {
     std::ifstream file(filename.c_str());
     return file.is_open();
 }
 
-// Собирает все .txt файлы в текущей папке для вывода списком
 std::vector<std::string> getAvailableFiles() {
     std::vector<std::string> files;
     WIN32_FIND_DATAA findData;
@@ -25,7 +23,7 @@ std::vector<std::string> getAvailableFiles() {
     if (hFind != INVALID_HANDLE_VALUE) {
         do {
             std::string name = findData.cFileName;
-            // Инструкцию прячем из списка, чтобы не мешалась
+            // Скрываем инструкцию из списка файлов для обработки
             if (name.find("instr") == std::string::npos) {
                 files.push_back(name);
             }
@@ -35,11 +33,11 @@ std::vector<std::string> getAvailableFiles() {
     return files;
 }
 
-// Защита от перезаписи: если файл есть, делаем Имя(1).txt, Имя(2).txt
 std::string getIndexedName(const std::string& baseName) {
     std::string finalName = baseName + ".txt";
     if (!fileExists(finalName)) return finalName;
     int index = 1;
+    // Крутим цикл, пока не найдем свободную цифру в скобках
     while (true) {
         std::string testName = baseName + "(" + std::to_string(index) + ").txt";
         if (!fileExists(testName)) return testName;
@@ -47,7 +45,6 @@ std::string getIndexedName(const std::string& baseName) {
     }
 }
 
-// Автогенерация имени файла
 std::string generateOutputFilename(const std::string& inputName, SortCriteria criteria, bool isAscending) {
     std::string suffix;
     switch (criteria) {
@@ -57,34 +54,37 @@ std::string generateOutputFilename(const std::string& inputName, SortCriteria cr
     case BY_TYPE: suffix = "_ТипПисьма"; break;
     case BY_DATE: suffix = "_Дата"; break;
     }
+
+    // Добавляем маркер направления через тернарник
     suffix += (isAscending ? "_Возр" : "_Убыв");
     size_t dotPos = inputName.find_last_of('.');
+
+    // Если точки нет (ввели без .txt) лепим суффикс в конец. Если есть - врезаемся перед точкой.
     return (dotPos == std::string::npos ? inputName + suffix : inputName.substr(0, dotPos) + suffix);
 }
 
-// Исправленный баг с датой!
-// Переводим "15.01.2024" -> "20240115", чтобы строки сравнивались как числа
 std::string parseToISO(std::string dateStr) {
-    dateStr.erase(0, dateStr.find_first_not_of(" \t"));
+    dateStr.erase(0, dateStr.find_first_not_of(" \t")); // Чистим ведущие пробелы
 
-    // Если дата отсутствует, заменяем на искусственный якорь
+    // Защита от кривых дат. Если данных нет или строка короче 10 символов - даем максимум.
+    // Зачем? Чтобы при сортировке по возрастанию битые даты всегда падали в самый конец отчета.
     if (dateStr.find("нет данных") != std::string::npos || dateStr.length() < 10) {
-        return ISO_MAX; // Уйдет в конец списка
+        return ISO_MAX;
     }
+    // Пересобираем ДД.ММ.ГГГГ -> ГГГГММДД
     return dateStr.substr(6, 4) + dateStr.substr(3, 2) + dateStr.substr(0, 2);
 }
 
-// Чтение файла по блокам. Блок разбивается на векторы, чтобы при сортировке
-// можно было выкинуть лишние письма или адреса (правка препода №6).
 Organization readNext(std::ifstream& file) {
     Organization org;
     org.isEmpty = true;
     std::string line;
 
     while (std::getline(file, line)) {
-        if (line.find(BLOCK_SEP) != std::string::npos) break; // Конец блока
+        if (line.find(BLOCK_SEP) != std::string::npos) break; // Уперлись в дефисы - отдаем готовый блок
 
         org.isEmpty = false;
+        // Распихиваем строки по массивам, чтобы потом было легко фильтровать
         if (line.find("Название") != std::string::npos) org.nameLine = line;
         else if (line.find("Адрес:") != std::string::npos) org.addresses.push_back(line);
         else if (line.find("Фамилия") != std::string::npos) org.directors.push_back(line);
@@ -94,10 +94,10 @@ Organization readNext(std::ifstream& file) {
     return org;
 }
 
-// Вытаскивает "чистые" значения из массива строк для компаратора сортировки
 std::vector<std::string> extractValues(const Organization& org, SortCriteria criteria) {
     std::vector<std::string> results;
 
+    // Тут просто дергаем нужные куски строк (сдвигаем индекс на длину слова, типа "Адрес: ")
     if (criteria == BY_NAME) {
         size_t p = org.nameLine.find(":");
         if (p != std::string::npos) results.push_back(org.nameLine.substr(p + 2));
@@ -119,6 +119,8 @@ std::vector<std::string> extractValues(const Organization& org, SortCriteria cri
             size_t p = doc.find("- Вид:");
             size_t end = doc.find(',');
             if (p != std::string::npos) {
+                // Жесткий тернарник: если запятой нет (end == npos), берем подстроку до самого конца (doc.length()).
+                // Иначе отрезаем кусок строго до запятой.
                 results.push_back(doc.substr(p + 6, (end == std::string::npos ? doc.length() : end) - (p + 6)));
             }
         }
@@ -130,16 +132,18 @@ std::vector<std::string> extractValues(const Organization& org, SortCriteria cri
         }
     }
 
-    // Чистим пробелы по краям
+    // Тримминг (обрезка пробелов) по краям
     for (auto& str : results) {
         str.erase(0, str.find_first_not_of(" \t"));
         str.erase(str.find_last_not_of(" \r\n\t") + 1);
     }
-    // Оставляем только уникальные значения внутри одного блока
+
+    // Схлопываем дубликаты. Зачем? Если в организации 2 письма от 15.01.2024, 
+    // нам нужно вернуть эту дату только 1 раз, чтобы не выводить всю организацию дважды под одной датой.
     std::sort(results.begin(), results.end());
     results.erase(std::unique(results.begin(), results.end()), results.end());
 
-    // Если по критерию у организации ничего нет (массив пуст)
+    // Если организация пустая по этому критерию (вообще нет писем, например)
     if (results.empty()) {
         if (criteria == BY_DATE) results.push_back(ISO_MAX);
         else results.push_back("нет данных");
@@ -148,7 +152,6 @@ std::vector<std::string> extractValues(const Organization& org, SortCriteria cri
     return results;
 }
 
-// Красивое форматирование шапки выходного файла
 std::string getCriteriaName(SortCriteria c) {
     if (c == BY_NAME) return "Название организации";
     if (c == BY_ADDR) return "Адрес";
@@ -157,39 +160,36 @@ std::string getCriteriaName(SortCriteria c) {
     return "Дата";
 }
 
-// ---------------------------------------------------------
-// ГЛАВНЫЙ УЗЕЛ ЛОГИКИ: ВНЕШНЯЯ СОРТИРОВКА ВЫБОРОМ
-// Сложность ОЗУ: O(1). Ограничения на размер файла: отсутствуют.
-// ---------------------------------------------------------
 void performSelectionSort(const std::string& inputFile, const std::string& outputFile, SortCriteria criteria, bool isAscending) {
     std::ofstream out(outputFile);
-
-    // Пишем шапку файла (правка препода №4)
     out << "============================================================\n";
     out << " ОТЧЕТ СОРТИРОВКИ ДАННЫХ\n";
     out << " Критерий: " << getCriteriaName(criteria) << "\n";
-    out << " Порядок : " << (isAscending ? "По возрастанию (А-Я, Старые-Новые)" : "По убыванию (Я-А, Новые-Старые)") << "\n";
+    // Тернарник: просто подставляем нужное слово в шапку файла
+    out << " Порядок : " << (isAscending ? "По возрастанию" : "По убыванию") << "\n";
     out << "============================================================\n\n";
     out.close();
 
     std::string lastProcessedValue = "";
     bool isFirstPass = true;
 
-    std::cout << "Выполняется сортировка (без загрузки в ОЗУ)..." << std::endl;
+    std::cout << "Выполняется сортировка" << std::endl;
 
     while (true) {
         std::ifstream fileIn(inputFile);
         std::string currentMinMax = "";
         bool isCandidateFound = false;
 
-        // ПРОХОД 1 (SELECTION): Читаем файл от и до. 
-        // Ищем наименьший/наибольший ключ, который мы ЕЩЕ НЕ обрабатывали на прошлых кругах.
+        // --- ПРОХОД 1: Ищем следующий ключ для группы ---
         while (fileIn.peek() != EOF) {
             Organization org = readNext(fileIn);
             if (org.isEmpty) continue;
 
             for (const auto& value : extractValues(org, criteria)) {
-                // Если мы сортируем по возрастанию, новое значение должно быть строго БОЛЬШЕ обработанного ранее.
+                // Хитрый тернарник для проверки "подходит ли нам это значение".
+                // Если мы сортируем по возрастанию, ищем всё, что строго больше прошлого значения.
+                // Если по убыванию - строго меньше.
+                // Для первого прохода берем всё (isFirstPass == true).
                 bool isNew = isFirstPass || (isAscending ? value > lastProcessedValue : value < lastProcessedValue);
 
                 if (isNew) {
@@ -198,7 +198,7 @@ void performSelectionSort(const std::string& inputFile, const std::string& outpu
                         isCandidateFound = true;
                     }
                     else {
-                        // Классический поиск экстремума из оставшихся
+                        // Обновляем текущий экстремум (ищем самый минимум из оставшихся)
                         if (isAscending && value < currentMinMax) currentMinMax = value;
                         if (!isAscending && value > currentMinMax) currentMinMax = value;
                     }
@@ -207,17 +207,16 @@ void performSelectionSort(const std::string& inputFile, const std::string& outpu
         }
         fileIn.close();
 
-        // Если новых значений больше нет - сортировка завершена
+        // Не нашли новых кандидатов - сворачиваем лавочку
         if (!isCandidateFound) break;
 
-        // ПРОХОД 2 (WRITE): Снова открываем файл.
-        // Записываем все блоки, в которых есть найденный на первом шаге ключ.
+        // --- ПРОХОД 2: Пишем в файл все блоки, где встретился этот ключ ---
         std::ofstream resFile(outputFile, std::ios::app);
-
         std::string displayHeader = currentMinMax;
+
+        // Костыль для дат: переводим системные "99999999" обратно в нормальный вид
         if (criteria == BY_DATE && displayHeader == ISO_MAX) displayHeader = "нет данных";
         else if (criteria == BY_DATE && displayHeader.length() == 8) {
-            // Переводим 20240115 обратно в 15.01.2024 для заголовка
             displayHeader = displayHeader.substr(6, 2) + "." + displayHeader.substr(4, 2) + "." + displayHeader.substr(0, 4);
         }
 
@@ -232,32 +231,29 @@ void performSelectionSort(const std::string& inputFile, const std::string& outpu
 
             std::vector<std::string> orgVals = extractValues(org, criteria);
 
-            // Проверяем, есть ли текущий ключ в этой организации
+            // Если в списке ключей текущей организации есть наш искомый ключ
             if (std::find(orgVals.begin(), orgVals.end(), currentMinMax) != orgVals.end()) {
 
-                // ПРАВКА ПРЕПОДА №6: Фильтрация лишних данных перед печатью!
-                // Печатаем название
                 resFile << org.nameLine << "\n";
 
-                // Печатаем адреса (если фильтр не по адресу - выводим все. Иначе - только совпавший)
+                // Выписываем адреса. Если сортировали не по адресу - выводим все. 
+                // Если по адресу - выводим только тот, который совпал с заголовком группы.
                 for (const auto& a : org.addresses) {
                     if (criteria != BY_ADDR || extractValues({ "", {a}, {}, "", {}, false }, BY_ADDR)[0] == currentMinMax) {
                         resFile << a << "\n";
                     }
                 }
 
-                // Печатаем директоров
                 for (const auto& d : org.directors) {
                     if (criteria != BY_DIR || extractValues({ "", {}, {d}, "", {}, false }, BY_DIR)[0] == currentMinMax) {
                         resFile << d << "\n";
                     }
                 }
 
-                // Печатаем письма
                 if (!org.docs.empty()) {
                     resFile << org.corrHeader << "\n";
                     for (const auto& doc : org.docs) {
-                        // Создаем мини-организацию из одного письма, чтобы проверить его ключ
+                        // Собираем фиктивную организацию из 1 письма, чтобы прогнать через наш же парсер
                         Organization tempDocOrg; tempDocOrg.docs.push_back(doc);
 
                         bool passType = (criteria != BY_TYPE || extractValues(tempDocOrg, BY_TYPE)[0] == currentMinMax);
@@ -268,7 +264,6 @@ void performSelectionSort(const std::string& inputFile, const std::string& outpu
                         }
                     }
                 }
-
                 resFile << BLOCK_SEP << "\n\n";
             }
         }
@@ -277,7 +272,7 @@ void performSelectionSort(const std::string& inputFile, const std::string& outpu
 
         lastProcessedValue = currentMinMax;
         isFirstPass = false;
-        std::cout << "."; // Индикатор, что цикл крутится
+        std::cout << ".";
     }
     std::cout << "\n[УСПЕХ] Запись сортировки успешно завершена.\n";
 }
