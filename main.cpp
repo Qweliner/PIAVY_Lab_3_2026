@@ -5,20 +5,23 @@
 
 using namespace std;
 
-// Перечисление состояний для безопасного ввода
+// Сигналы конечного автомата для обработки прерываний ввода.
 enum FlowState { SUCCESS, BACK };
 
-FlowState safeInput(string& buffer, string prompt) {
+// Перехват и фильтрация потока ввода на уровне скан-кодов.
+// Параметр onlyDigits жестко блокирует ввод любых символов, кроме 0-9.
+FlowState safeInput(string& buffer, string prompt, bool onlyDigits = false) {
     cout << prompt << buffer;
     while (true) {
         int keycode = _getch();
 
-        // Отсекаем стрелки (начинаются с 0 или 224). _kbhit() проверяет, есть ли хвост у стрелки.
+        // Фильтрация расширенных кодов (стрелки, функциональные клавиши).
+        // _kbhit() верифицирует наличие второго байта последовательности.
         if (keycode == 0 || keycode == 224) {
             if (_kbhit()) { _getch(); continue; }
         }
 
-        if (keycode == 27) return BACK; // Нажат ESC
+        if (keycode == 27) return BACK;
 
         if (keycode == 13) {
             if (buffer.empty()) continue;
@@ -26,14 +29,21 @@ FlowState safeInput(string& buffer, string prompt) {
             return SUCCESS;
         }
 
-        if (keycode == 8) { // Нажат Backspace
+        if (keycode == 8) {
             if (!buffer.empty()) {
                 buffer.pop_back();
                 cout << "\b \b";
             }
         }
         else if (keycode >= 32 && keycode <= 255) {
-            if (string("<>:\"/\\|?*").find((char)keycode) != string::npos) continue;
+            if (onlyDigits) {
+                // Жесткий фильтр: пропускаются исключительно цифровые символы
+                if (!isdigit(keycode)) continue;
+            }
+            else {
+                // Блокировка символов, нарушающих структуру файловой системы ОС.
+                if (string("<>:\"/\\|?*").find((char)keycode) != string::npos) continue;
+            }
             buffer += (char)keycode;
             cout << (char)keycode;
         }
@@ -69,16 +79,15 @@ int main() {
             SortCriteria sortCriteria = BY_NAME;
             bool isAscending = true;
 
-            // Конечный автомат для удобной отмены действий по ESC
+            // Иерархическое меню на базе машины состояний
             while (currentStep > 0 && currentStep <= 4) {
                 system("cls");
-                if (currentStep == 1) cout << " [ ESC: Возврат в главное меню ]\n";
+                if (currentStep == 1) cout << "[ ESC: Возврат в главное меню ]\n";
                 else cout << "[ ESC: Вернуться на предыдущий шаг ]\n";
                 cout << "------------------------------------------------------------\n";
 
                 switch (currentStep) {
                 case 1: {
-                    // ПРАВКА ПРЕПОДА №7: Меню выбора файлов
                     vector<string> files = getAvailableFiles();
                     if (!files.empty()) {
                         cout << " Найденные текстовые файлы в папке:\n";
@@ -86,19 +95,40 @@ int main() {
                             cout << " " << i + 1 << ". " << files[i] << "\n";
                         }
                         cout << " 0. Ввести имя файла вручную\n\n";
-                        cout << " Выберите пункт: ";
 
-                        int fileChoice = _getch();
-                        if (fileChoice == 27) { currentStep = 0; break; }
+                        string choiceStr = "";
+                        // Флаг true активирует режим "только числа"
+                        if (safeInput(choiceStr, " Выберите пункт: ", true) == BACK) { currentStep = 0; break; }
 
-                        int idx = fileChoice - '0';
+                        int idx = -1;
+                        try {
+                            idx = std::stoi(choiceStr);
+                        }
+                        catch (...) {
+                            // Защита от переполнения типа int при вводе сверхдлинных последовательностей
+                            idx = -1;
+                        }
+
                         if (idx > 0 && idx <= files.size()) {
                             inputPath = files[idx - 1];
+
+                            // Защита от состояния гонки: проверка фактического существования файла 
+                            // после завершения ввода пользователя.
+                            if (!fileExists(inputPath)) {
+                                cout << "\n Ошибка: выбранный файл удален или переименован. [Enter]";
+                                while (_getch() != 13);
+                                break;
+                            }
                             currentStep = 2;
                             break;
                         }
-                        else if (idx != 0) {
-                            break; // Нажата левая кнопка, обновляем экран
+                        else if (idx == 0) {
+                            // Инициация процедуры ручного ввода имени файла
+                        }
+                        else {
+                            cout << "\n Ошибка: пункта с таким номером нет. [Enter]";
+                            while (_getch() != 13);
+                            break;
                         }
                     }
 
@@ -129,8 +159,8 @@ int main() {
                 }
                 case 3: {
                     cout << " Направление сортировки:\n";
-                    cout << " 1. По возрастанию (А -> Я, Старые -> Новые)\n";
-                    cout << " 2. По убыванию (Я -> А, Новые -> Старые)\n";
+                    cout << " 1. По возрастанию\n";
+                    cout << " 2. По убыванию\n";
 
                     int key = _getch();
                     if (key == 27) { currentStep = 2; break; }
@@ -144,6 +174,7 @@ int main() {
                     string autoBaseName = generateOutputFilename(inputPath, sortCriteria, isAscending);
                     string suggestedName = autoBaseName;
 
+                    // Детектирование коллизий файлов и инициализация процедуры автоинкремента
                     if (fileExists(autoBaseName + ".txt")) {
                         suggestedName = getIndexedName(autoBaseName);
                         cout << "[!] Файл " << autoBaseName << ".txt уже существует.\n";
@@ -157,13 +188,14 @@ int main() {
 
                     string finalPath = manualOutput + ".txt";
 
+                    // Обработка ручного переопределения с вводом имени существующего файла
                     if (fileExists(finalPath)) {
-                        cout << "\n [ВНИМАНИЕ] Файл " << finalPath << " уже существует!\n";
+                        cout << "\n[ВНИМАНИЕ] Файл " << finalPath << " уже существует!\n";
                         cout << " Перезаписать его? (Y - да, любой другой ввод - нет): ";
                         string overwriteAns = "Y";
                         if (safeInput(overwriteAns, "") == BACK) { currentStep = 3; break; }
 
-                        if (!(overwriteAns == "Y" || overwriteAns == "y" || overwriteAns == "Да" || overwriteAns == "да")) {
+                        if (!(overwriteAns == "Y" || overwriteAns == "y" || overwriteAns == "Да" || overwriteAns == "да" || overwriteAns == "1")) {
                             break;
                         }
                     }
