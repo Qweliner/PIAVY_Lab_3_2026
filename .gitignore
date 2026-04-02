@@ -361,5 +361,10 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
-/Отчет_IC_test_AO_test_Дата_Убыв.txt
-/Отчет_IC_test_AO_test_ТипПисьма_Возр.txt
+
+# Игнорируем все текстовые файлы (результаты сортировки)
+*.txt
+
+# Исключения: оставляем инструкцию и исходные базовые отчеты
+!instructions.txt
+!Отчет_IC_test_AO_test.txt
