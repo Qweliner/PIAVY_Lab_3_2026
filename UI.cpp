@@ -1,3 +1,4 @@
+//UI.cpp
 #include "UI.h"
 #include <iostream>
 #include <conio.h>
@@ -154,12 +155,4 @@ void Greeting() {
     cout << " 2. Инструкция пользователя\n";
     cout << " ESC. Выход из программы\n";
     cout << "------------------------------------------------------------\n";
-}
-
-bool isNumber(const string& s) {
-    if (s.empty()) return false;
-    for (char const& c : s) {
-        if (isdigit(c) == 0) return false;
-    }
-    return true;
 }

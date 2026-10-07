@@ -1,4 +1,5 @@
-﻿#include "FileSorter.h"
+﻿//main.cpp
+#include "FileSorter.h"
 #include "UI.h"
 #include <iostream>
 #include <conio.h>
