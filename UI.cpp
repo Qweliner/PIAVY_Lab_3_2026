@@ -28,7 +28,7 @@ FlowState safeInput(string& buffer, const string& prompt, bool onlyDigits) {
     }
 }
 
-// Шаг 1: Выбор входного файла из найденных или ввод вручную.
+// Выбор входного файла из найденных или ввод вручную.
 int SelectFileStep(string& inputPath) {
     system("cls");
     cout << " [ ESC: Возврат в главное меню ]\n";
@@ -76,7 +76,7 @@ int SelectFileStep(string& inputPath) {
     return 2;
 }
 
-// Шаг 2: Выбор поля, по которому будем группировать данные.
+// Выбор поля, по которому будем группировать данные.
 int SelectCriteriaStep(const string& inputPath, SortCriteria& crit) {
     system("cls");
     cout << "[ ESC: Вернуться на предыдущий шаг ]\n";
@@ -92,7 +92,7 @@ int SelectCriteriaStep(const string& inputPath, SortCriteria& crit) {
     return 3;
 }
 
-// Шаг 3: Выбор направления сортировки (возрастание или убывание).
+// Выбор направления сортировки (возрастание или убывание).
 int SelectOrderStep(bool& asc) {
     system("cls");
     cout << "[ ESC: Вернуться на предыдущий шаг ]\n";
@@ -107,7 +107,7 @@ int SelectOrderStep(bool& asc) {
     return 4;
 }
 
-// Шаг 4: Генерация имени выходного файла, проверка перезаписи и запуск алгоритма.
+// Генерация имени выходного файла, проверка перезаписи и запуск алгоритма.
 int FinalizeOutputStep(const string& in, SortCriteria cr, bool asc) {
     system("cls");
     cout << " [ ESC: Вернуться на предыдущий шаг ]\n";
